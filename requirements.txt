@@ -1,0 +1,7 @@
+fastapi
+matplotlib
+pandas
+numpy
+requests
+websockets
+PyDrive
