@@ -28,7 +28,12 @@ from kbs.pdf_loader import router as pdf_loader_router
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from io import BytesIO
-
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
+from twilio.rest import Client
 
 
 app = FastAPI()
@@ -78,7 +83,10 @@ def get_file_by_title(title: str, files_list: list):
 
 
 @app.get("/list-all-files")
-async def list_all_drive_files(title: str = Query(..., title="File Title")):
+async def list_all_drive_files(
+    # title: str = Query(..., title="File Title")
+    title: str = "output_file",
+):
     try:
         all_files = list_all_files()
         requested_file = get_file_by_title(title, all_files)
@@ -151,7 +159,7 @@ async def download_drive_file(file_id: str):
         return {"error": e.detail}
 
 
-def access_google_drive(file_id: str):
+def access_google_drive(file_id: str = "10hVrKmMzQ-YumgQVJ3gDq_i9Fv1wdiBp1hPAO7wt2vk"):
     try:
         # No necesitas cargar las credenciales aquí si ya has autenticado con PyDrive
         # Crea una instancia del servicio de Google Drive
@@ -172,9 +180,14 @@ def access_google_drive(file_id: str):
         df = pd.read_excel(excel_data)
 
         # # Convertir columnas de tipo Timestamp a cadenas de texto
-        # date_columns = ["Fecha Nacimiento", "Fecha Expedicion", "Fecha Afiliacion"]
-        # for col in date_columns:
-        #     df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
+        date_columns = [
+            "Fecha Nacimiento",
+            "Fecha Expedición",
+            "Fecha Afiliación",
+            "Fecha_Ultimo_Pago",
+        ]
+        for col in date_columns:
+            df[col] = df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
 
         # Limpiar valores flotantes para evitar errores de serialización JSON
         df.replace([np.inf, -np.inf], np.nan, inplace=True)
@@ -191,10 +204,27 @@ def access_google_drive(file_id: str):
             "Numero Celular",
             "Email",
             "Link_Planillas",
+            "Pago_Realizado",
+            "Fecha_Ultimo_Pago",
         ]
 
-        df_subset = df[columns_of_interest]
+        df_subset = df[(df["Pago_Realizado"] == "SI") & (df["Fecha_Ultimo_Pago"] != 0)]
 
+        # Iterar sobre cada fila del subconjunto filtrado y enviar el correo a cada usuario
+        for index, user in df_subset.iterrows():
+            # Enviar el enlace del archivo por WhatsApp
+            enviar_pdf_desde_google_drive(
+                f"Link de la planilla: {user['Link_Planillas']}",
+                # user["Numero Celular"],
+                # user["Primer Nombre"],
+                user[
+                    "Email"
+                ],  # Asumiendo que 'Numero Celular' contiene el número de WhatsApp
+            )
+
+        # [enviar_pdf_desde_google_drive(
+        #     user["Primer Nombre"], user["Email"]
+        # ) for user in df['subset']]
         return df_subset
     except Exception as e:
         raise HTTPException(
@@ -203,7 +233,9 @@ def access_google_drive(file_id: str):
 
 
 @app.get("/access-google-drive/{file_id}")
-async def access_google_drive_endpoint(file_id: str):
+async def access_google_drive_endpoint(
+    file_id: str = "10hVrKmMzQ-YumgQVJ3gDq_i9Fv1wdiBp1hPAO7wt2vk",
+):
     try:
         result_df = access_google_drive(file_id)
         return JSONResponse(content=result_df.to_dict(orient="records"))
@@ -215,3 +247,90 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run("main:app", reload=True, host="127.0.0.1", port=8000)
+
+
+# Función para descargar y enviar un archivo PDF desde Google Drive por correo electrónico
+def enviar_pdf_desde_google_drive(
+    file_link: str,
+    #   name_sender: str,
+    email: str,
+    provider: str = "gmail",
+):
+    # Configurar la autenticación de PyDrive
+    # Obtener el ID del archivo desde el enlace de Google Drive
+    # file_id = file_link.split("/")[-2]
+    # filename = f"{name_sender}.pdf"
+
+    gauth = GoogleAuth()
+    gauth.LocalWebserverAuth()
+
+    # Autenticar con Google Drive
+    drive = GoogleDrive(gauth)
+
+    try:
+        # file = drive.CreateFile({"id": file_id})
+        # file.GetContentFile(filename)  # Descargar el archivo PDF
+
+        # Configurar los parámetros para enviar el correo electrónico
+        from_address = "cycaccionlegalsas@gmail.com"
+        password = "kvbs wfum qrst bvsx"
+        to_address = email
+
+        msg = MIMEMultipart()
+        msg["From"] = from_address
+        msg["To"] = to_address
+        msg[
+            "Subject"
+        ] = "Envio de planilla automatizado desde Google Drive. Bechos gordito"
+
+        # Configurar el servidor SMTP y envío del correo electrónico según el proveedor
+        if provider.lower() == "gmail":
+            smtp_server = "smtp.gmail.com"
+            port = 587
+        elif provider.lower() == "hotmail":
+            smtp_server = "smtp.live.com"  # Puedes usar "smtp.office365.com" si es una cuenta de Office 365
+            port = 587
+        else:
+            raise ValueError("Proveedor de correo no compatible")
+        # Adjuntar el archivo PDF al correo electrónico       # Cuerpo del correo con el enlace del archivo de Google Drive
+        body = f"Estimado/a,\n\nAquí está el enlace al archivo: {file_link}\n\nAtentamente,\nTu empresa"
+        msg.attach(MIMEText(body, "plain"))
+        # Configuración del servidor SMTP y envío del correo electrónico
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(from_address, password)
+        server.send_message(msg)
+        server.quit()
+
+        # Configurar el servidor SMTP y enviar el correo electrónico
+        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server.starttls()
+        server.login(from_address, password)
+        server.send_message(msg)
+        server.quit()
+
+        print("Correo electrónico enviado con el archivo adjunto.")
+
+    except Exception as e:
+        print(f"Error: {str(e)}")
+
+
+# Utilizar la función para enviar el archivo PDF a un destinatario específico
+# Reemplaza 'tu_enlace_de_google_drive' con el enlace proporcionado en 'Link_Planillas'
+# Reemplaza 'destinatario@example.com' con la dirección de correo del destinatario
+# enviar_pdf_desde_google_drive("tu_enlace_de_google_drive", "destinatario@example.com")
+# def enviar_whatsapp(mensaje: str, numero_whatsapp: str):
+#     # Tu cuenta SID y token de autenticación de Twilio
+#     token = "AC2118693af16ced6cc925ef4497555481"
+#     id_phone_number = "de4d84b1d856f79bb62cdde6b3a21a95"
+#     # sender_phone = Client(account_sid, auth_token)
+
+#     # Número de WhatsApp de origen (obtenido de Twilio)
+#     sender_phone = "+573107282535"  # Cambia esto con tu número de Twilio
+#     message = "Teesting testing"
+#     try:
+#         message_whatssapp = WhatsApp(token, id_phone_number)
+#         message_whatssapp.send_message(message, sender_phone)
+#         print(f"Mensaje enviado a {numero_whatsapp}")
+#     except Exception as e:
+#         print(f"Error al enviar el mensaje: {str(e)}")

@@ -66,9 +66,9 @@ async def process_file(file: UploadFile = File(...)):
                 doc.metadata["source"] = f"source_{i}"
 
             # Llama al segundo endpoint para almacenar los documentos en Redis
-            response = await store_documents(docs)
+            # response = await store_documents(docs)
             # print(type(docs))
-            return response
+            return docs
     except Exception as e:
         print(e)
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {str(e)}")
@@ -88,11 +88,11 @@ async def store_documents(
                 "type": doc["type"],
                 # Add other fields as needed
             }
-        serializable_docs.append(serializable_doc)
+            serializable_docs.append(serializable_doc)
 
-        redis_key = f"document_{i}"
-        serialized_data = json.dumps(serializable_doc)
-        redis_client.set(redis_key, serialized_data)
+            redis_key = f"document_{i}"
+            serialized_data = json.dumps(serializable_doc)
+            redis_client.set(redis_key, serialized_data)
 
         return {"message": "Documents stored in Redis"}
     except Exception as e:
@@ -100,4 +100,48 @@ async def store_documents(
         raise HTTPException(
             status_code=500,
             detail=f"Internal Server Error loading vector stores: {str(e)}",
+        )
+
+
+@router.get("/retrieve-all-documents")
+async def retrieve_all_documents():
+    try:
+        # Get all keys that match the pattern
+        keys = redis_client.keys("document_*")
+
+        # Retrieve values for each key
+        retrieved_docs = []
+        for key in keys:
+            serialized_data = redis_client.get(key)
+            retrieved_doc = json.loads(serialized_data)
+            retrieved_docs.append(retrieved_doc)
+
+        return retrieved_docs
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal Server Error retrieving all documents from Redis: {str(e)}",
+        )
+
+
+@router.get("/retrieve-document/{document_id}")
+async def retrieve_document(document_id: int):
+    try:
+        redis_key = f"document_{document_id}"
+        serialized_data = redis_client.get(redis_key)
+
+        if serialized_data is not None:
+            retrieved_doc = json.loads(serialized_data)
+            return retrieved_doc
+        else:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Document with ID {document_id} not found in Redis",
+            )
+    except Exception as e:
+        print(e)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal Server Error retrieving document from Redis: {str(e)}",
         )
