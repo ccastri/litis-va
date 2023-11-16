@@ -16,6 +16,7 @@ from fastapi import (
     status,
 )
 import openpyxl
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from sockets import sio_app
 import requests
@@ -25,6 +26,9 @@ from fastapi.staticfiles import StaticFiles
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
 from kbs.pdf_loader import router as pdf_loader_router
+from auth.login import router as auth_router
+
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from io import BytesIO
@@ -37,7 +41,22 @@ from twilio.rest import Client
 
 
 app = FastAPI()
+# Define allowed origins (you should adjust this according to your requirements)
+origins = [
+    "http://localhost",
+    "http://localhost:3000",  # Replace this with the actual URL of your Next.js app
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],  # You can specify HTTP methods like ["GET", "POST"]
+    allow_headers=["*"],  # You can specify headers if needed
+)
 # app.mount("/", app=sio_app)
+# Incluye las rutas de autenticación en tu aplicación principal
+app.include_router(auth_router, prefix="/auth", tags=["auth"])
 app.include_router(pdf_loader_router, prefix="/kb", tags=["kb"])
 
 gauth = GoogleAuth()
@@ -211,16 +230,16 @@ def access_google_drive(file_id: str = "10hVrKmMzQ-YumgQVJ3gDq_i9Fv1wdiBp1hPAO7w
         df_subset = df[(df["Pago_Realizado"] == "SI") & (df["Fecha_Ultimo_Pago"] != 0)]
 
         # Iterar sobre cada fila del subconjunto filtrado y enviar el correo a cada usuario
-        for index, user in df_subset.iterrows():
-            # Enviar el enlace del archivo por WhatsApp
-            enviar_pdf_desde_google_drive(
-                f"Link de la planilla: {user['Link_Planillas']}",
-                # user["Numero Celular"],
-                # user["Primer Nombre"],
-                user[
-                    "Email"
-                ],  # Asumiendo que 'Numero Celular' contiene el número de WhatsApp
-            )
+        # for index, user in df_subset.iterrows():
+        #     # Enviar el enlace del archivo por WhatsApp
+        #     enviar_pdf_desde_google_drive(
+        #         f"Link de la planilla: {user['Link_Planillas']}",
+        #         # user["Numero Celular"],
+        #         # user["Primer Nombre"],
+        #         user[
+        #             "Email"
+        #         ],  # Asumiendo que 'Numero Celular' contiene el número de WhatsApp
+        #     )
 
         # [enviar_pdf_desde_google_drive(
         #     user["Primer Nombre"], user["Email"]
@@ -296,13 +315,6 @@ def enviar_pdf_desde_google_drive(
         body = f"Estimado/a,\n\nAquí está el enlace al archivo: {file_link}\n\nAtentamente,\nTu empresa"
         msg.attach(MIMEText(body, "plain"))
         # Configuración del servidor SMTP y envío del correo electrónico
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(from_address, password)
-        server.send_message(msg)
-        server.quit()
-
-        # Configurar el servidor SMTP y enviar el correo electrónico
         server = smtplib.SMTP("smtp.gmail.com", 587)
         server.starttls()
         server.login(from_address, password)
