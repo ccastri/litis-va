@@ -44,10 +44,9 @@ from email import encoders
 
 app = FastAPI()
 # Define allowed origins (you should adjust this according to your requirements)
-origins = [
-    "http://localhost",
-    "http://localhost:3000",  # Replace this with the actual URL of your Next.js app
-]
+origins = ["*"]
+# "http://localhost",
+# "http://localhost:3000",  # Replace this with the actual URL of your Next.js app
 
 app.add_middleware(
     CORSMiddleware,
