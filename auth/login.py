@@ -20,7 +20,21 @@ db = {
         "email": "ccastri.dev333@gmail.com",
         "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
         # "Contraseña2": "Bio2160cc.1607",
-    }
+    },
+    "francisco": {
+        "username": "francisco",
+        "full_name": "francisco castrillon",
+        "email": "ccastri.dev333@gmail.com",
+        "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
+        # "Contraseña2": "Bio2160cc.1607",
+    },
+    "pilar": {
+        "username": "pilar",
+        "full_name": "pilar calderon",
+        "email": "ccastri.dev333@gmail.com",
+        "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
+        # "Contraseña2": "Bio2160cc.1607",
+    },
 }
 
 
@@ -114,6 +128,8 @@ async def get_current_active_user(current_user: UserInDB = Depends(get_current_u
 
 @router.post("/token")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    # form_data = form_data
+    print("Received form data:", form_data)
     try:
         user = await authenticate_user(db, form_data.username, form_data.password)
         if not user:
@@ -130,9 +146,25 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 
         return {"access_token": access_token, "token_type": "bearer"}
 
+    except KeyError as e:
+        # Log the error and return a suitable response
+        print(f"KeyError occurred: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred",
+        )
+
+    except ValueError as e:
+        # Log the error and return a suitable response
+        print(f"ValueError occurred: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Internal server error occurred",
+        )
+
     except Exception as e:
         # Log the error for debugging purposes
-        print(f"An error occurred during login: {e}")
+        print(f"An error occurred during login: {str(e)}")
 
         # Return a generic error message to the user
         raise HTTPException(

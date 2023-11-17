@@ -1,5 +1,6 @@
 import pandas as pd
-import matplotlib.pyplot as plt
+
+# import matplotlib.pyplot as plt
 import numpy as np
 import os
 import asyncio
@@ -18,14 +19,16 @@ from fastapi import (
 import openpyxl
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from sockets import sio_app
 import requests
-import websockets
-from sockets import sio_app
+
+# import websockets
+
+# from sockets import sio_app
 from fastapi.staticfiles import StaticFiles
 from pydrive.auth import GoogleAuth
 from pydrive.drive import GoogleDrive
-from kbs.pdf_loader import router as pdf_loader_router
+
+# from kbs.pdf_loader import router as pdf_loader_router
 from auth.login import router as auth_router
 
 
@@ -37,7 +40,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
-from twilio.rest import Client
 
 
 app = FastAPI()
@@ -57,7 +59,7 @@ app.add_middleware(
 # app.mount("/", app=sio_app)
 # Incluye las rutas de autenticación en tu aplicación principal
 app.include_router(auth_router, prefix="/auth", tags=["auth"])
-app.include_router(pdf_loader_router, prefix="/kb", tags=["kb"])
+# app.include_router(pdf_loader_router, prefix="/kb", tags=["kb"])
 
 # gauth = GoogleAuth()
 # gauth.LocalWebserverAuth()
