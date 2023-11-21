@@ -5,13 +5,38 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
+# from starlette.requests import Request
+# from starlette.responses import RedirectResponse
 
+# from authlib.integrations.starlette_client import OAuth
+# from .config import CLIENT_SECRET, CLIENT_ID
+# from starlette.middleware.sessions import SessionMiddleware
+
+#! openssl rand command for random token generation
 SECRET_KEY = "c63936b20e0c03904d1c4029e73e219d715d581a4ebca46aafb1f1470ee710e5"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRES_MINS = 30
+# REDIRECT_URI = "http://your-redirect-uri.com"
 router = APIRouter()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+# oauth = OAuth(
+#     client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri
+# )
+
+# OAuth.register(
+
+#         "client_id": CLIENT_ID,
+#         "project_id": CLIENT_SECRET,
+#         "client_kwargs":{"scope":"email openid profile",
+#         "redirect_url": "http://localhost:3000",
+#                          }
+#         "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+#         "token_uri": "https://oauth2.googleapis.com/token",
+#         "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+
+#         ],
+# )
 # Tu base de datos simulada de usuarios
 db = {
     "camilo": {
@@ -99,23 +124,39 @@ async def create_access_token(data: dict, expires_delta: timedelta or None = Non
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     credential_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
+        detail="Invalid token credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
 
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithm=[ALGORITHM])
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
         if username is None:
-            raise credential_exception
+            raise ValueError("No username found in token")
         token_data = TokenData(username=username)
 
-    except JWTError:
-        raise credential_exception
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token has expired",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except jwt.JWTError as e:
+        raise credential_exception from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     user = get_user(db, username=token_data.username)
     if user is None:
-        raise credential_exception
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     return user
 
@@ -180,3 +221,13 @@ async def read_users_me(current_user: User = Depends(get_current_active_user)):
 
 pwd = get_password_hash("Bio2160cc.1607")
 print(pwd)
+
+
+# Apply middleware to the router
+# def get_login_router():
+#     router_with_middleware = APIRouter()
+#     router_with_middleware.add_middleware(
+#         SessionMiddleware, secret_key="the super secret key"
+#     )
+#     router_with_middleware.include_router(router)
+#     return router_with_middleware
