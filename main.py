@@ -46,10 +46,14 @@ from email import encoders
 # from DB import connect_to_db, disconnect_from_db
 # from sqlalchemy import create_engine, MetaData, Table
 
-from DB import Base, engine, get_db
+from DB import Base, engine, get_db, db_url
 from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
 from models import Afiliado
 from sqlalchemy import func
+import re
+import pdfminer
+from pdfminer.high_level import extract_text
 
 # from sqlalchemy.ext.declarative import declarative_base
 
@@ -77,12 +81,21 @@ app.include_router(auth_router, tags=["auth"])
 
 # Creamos la sesión de SQLAlchemy
 
+# engine = create_engine(db_url)
+
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
 
 
 create_tables()
+
+
+# Ruta para obtener un afiliado por su ID
+@app.get("/afiliados-pdf")
+async def obtener_afiliado(afiliado_id: int, db: Session = Depends(get_db)):
+    text = extract_text(".\static\planillas\CAMILO ANDRES CASTRILLON CALDERON.pdf")
+    print(text)
 
 
 # Ruta para obtener un afiliado por su ID
@@ -150,4 +163,4 @@ async def main_2():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", reload=True, host="127.0.0.1", port=8000)
+    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8000)
