@@ -13,7 +13,7 @@ db_password = "password"
 db_host = (
     "db"  # Nombre del servicio del contenedor de la base de datos en Docker Compose
 )
-# db_host = "localhost"
+db_host = "localhost"
 
 # La URL de conexión ahora apunta al contenedor 'db' en lugar de 'localhost'
 db_url = f"postgresql://{db_user}:{db_password}@{db_host}:5432/{db_name}"

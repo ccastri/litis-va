@@ -53,6 +53,7 @@ from models import Afiliado
 from sqlalchemy import func
 import re
 import pdfminer
+
 from pdfminer.high_level import extract_text
 
 # from sqlalchemy.ext.declarative import declarative_base

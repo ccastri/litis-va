@@ -55,3 +55,4 @@ asyncpg
 psycopg2
 aiopg
 xlrd
+pdfminer
