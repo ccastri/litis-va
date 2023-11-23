@@ -68,3 +68,11 @@ class Afiliado(Base):
     razon_social = Column(String(255))
     observaciones = Column(Float)
     # Agrega más columnas aquí si las hay
+
+
+class DocumentoAfiliado(Base):
+    __tablename__ = "documento_afiliados"
+
+    id = Column(Integer, primary_key=True)
+    tipo_identificacion = Column(String(50))
+    identificacion = Column(Integer)

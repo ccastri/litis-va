@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 import requests
 
-# from typing import List
+from typing import List, Optional
 
 # import websockets
 
@@ -49,7 +49,7 @@ from email import encoders
 from DB import Base, engine, get_db, db_url
 from sqlalchemy.orm import Session
 from sqlalchemy import create_engine
-from models import Afiliado
+from models import Afiliado, DocumentoAfiliado
 from sqlalchemy import func
 import re
 import pdfminer
@@ -94,9 +94,71 @@ create_tables()
 
 # Ruta para obtener un afiliado por su ID
 @app.get("/afiliados-pdf")
-async def obtener_afiliado(afiliado_id: int, db: Session = Depends(get_db)):
+async def obtener_planilla_afiliado(afiliado_id: int, db: Session = Depends(get_db)):
     text = extract_text(".\static\planillas\CAMILO ANDRES CASTRILLON CALDERON.pdf")
     print(text)
+
+
+@app.get("/afiliados/count")
+async def contar_afiliados(db: Session = Depends(get_db)):
+    try:
+        count = db.query(func.count()).select_from(Afiliado).scalar()
+        if count is None:
+            raise HTTPException(status_code=404, detail="No se encontraron afiliados")
+        return {"count": count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# @app.get("/afiliados/documentos/")
+# async def obtener_documentos_afiliados(
+#     skip: int = 0, limit: int = 10, db: Session = Depends(get_db)
+# ):
+#     # -> List[DocumentoAfiliado]:
+#     afiliados = (
+#         db.query(Afiliado.tipo_identificacion, Afiliado.identificacion)
+#         .offset(skip)
+#         .limit(limit)
+#         .all()
+#     )
+#     documentos_afiliados = [
+#         DocumentoAfiliado(
+#             tipo_identificacion=afi.tipo_identificacion,
+#             identificacion=afi.identificacion,
+#         )
+#         for afi in afiliados
+#     ]
+
+#     return documentos_afiliados
+
+
+@app.get("/afiliados/documentos/")
+async def obtener_documentos_afiliados(
+    selected_ids: Optional[List[int]] = Query(None),
+    page_size: int = 10,
+    skip: int = 0,
+    db: Session = Depends(get_db),
+):
+    query = db.query(Afiliado.tipo_identificacion, Afiliado.identificacion)
+
+    # Filtra los afiliados seleccionados si se proporcionan los IDs
+    if selected_ids:
+        query = query.filter(Afiliado.id.in_(selected_ids))
+
+    # Aplica la paginación después del filtrado
+    query = query.offset(skip).limit(page_size)
+
+    afiliados = query.all()
+
+    documentos_afiliados = [
+        DocumentoAfiliado(
+            tipo_identificacion=afi[0],
+            identificacion=afi[1],
+        )
+        for afi in afiliados
+    ]
+
+    return documentos_afiliados
 
 
 # Ruta para obtener un afiliado por su ID
@@ -117,14 +179,6 @@ async def obtener_afiliados(
     # -> List[Afiliado]:
     afiliados = db.query(Afiliado).offset(skip).limit(limit).all()
     return afiliados
-
-
-@app.get("/afiliados/count")
-async def contar_afiliados(db: Session = Depends(get_db)):
-    count = db.query(func.count(Afiliado.id)).scalar()
-    if count is None:
-        raise HTTPException(status_code=404, detail="No se encontraron afiliados")
-    return {"count": count}
 
 
 @app.get("/")
