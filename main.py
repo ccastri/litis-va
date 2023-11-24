@@ -104,11 +104,14 @@ create_tables()
 #     text = extract_text(".\static\planillas\CAMILO ANDRES CASTRILLON CALDERON.pdf")
 #     print(text)
 @app.post("/afiliados-zip")
-async def obtener_planilla_afiliado_zip(uploaded_file: UploadFile = File(...)):
+async def obtener_planilla_afiliado_zip(
+    db: Session = Depends(get_db), uploaded_file: UploadFile = File(...)
+):
     try:
         zip_file = await uploaded_file.read()
 
-        pdf_files_texts = []
+        renamed_files = []
+        emails_and_ids = []
 
         # Extract and process each PDF file within the ZIP
         with zipfile.ZipFile(BytesIO(zip_file), "r") as zip_ref:
@@ -116,15 +119,78 @@ async def obtener_planilla_afiliado_zip(uploaded_file: UploadFile = File(...)):
                 if file_name.lower().endswith(".pdf"):
                     # Read the PDF file from the ZIP
                     with zip_ref.open(file_name) as pdf_file:
-                        # Extract text from the second page of the PDF using pdfminer
                         pdf_content = pdf_file.read()
-                        text = extract_text(BytesIO(pdf_content), page_numbers=[1])
-                        pdf_files_texts.append((file_name, text))
 
-        return {
-            "message": "Text extracted from the second page of PDF files in the ZIP",
-            "pdf_files_texts": pdf_files_texts,
-        }
+                        # Extract text from the second page of the PDF using pdfminer
+                        second_page_text = extract_text(
+                            BytesIO(pdf_content), page_numbers=[1]
+                        )
+
+                        # Patrones de expresiones regulares para la información que deseas extraer
+                        patrones = {
+                            "Periodo Cotización": r"Periodo Cotización\s*\n+([\w\d]+)",
+                            "Periodo Servicio": r"Periodo Servicio\s*\n+([\w\d]+)",
+                            "Tipo Planilla": r"Tipo Planilla\s*\n+([\w\d]+)",
+                            "Documento": r"Documento\s*\n\n([A-Z0-9 ]+)",
+                            "Nombre del Afiliado": r"Nombres y Apellidos\s*\n\n([A-Z ]+)",
+                        }
+
+                        # Función para extraer la información basada en los patrones definidos
+                        def extraer_informacion(texto):
+                            info_extraida = {}
+                            for nombre, patron in patrones.items():
+                                resultado = re.search(patron, texto)
+                                if resultado:
+                                    info_extraida[nombre] = resultado.group(1)
+                                else:
+                                    info_extraida[nombre] = None
+                            return info_extraida
+
+                        # Extraer la información del texto de la segunda página
+                        info_extraida = extraer_informacion(second_page_text)
+
+                        # Renombrar el archivo según la información extraída
+                        nuevo_nombre = f"{info_extraida['Documento']}_{info_extraida['Nombre del Afiliado']}_{info_extraida['Tipo Planilla']}_{info_extraida['Periodo Cotización']}_{info_extraida['Periodo Servicio']}.pdf"
+
+                        # Agregar el archivo renombrado a la lista
+                        renamed_files.append((nuevo_nombre, pdf_content))
+
+                        identificacion = info_extraida["Documento"]
+                        # Eliminar "CC " del inicio del número de documento si está presente
+                        identificacion_limpia = identificacion.replace("CC ", "")
+
+                        correo_afiliado = (
+                            db.query(Afiliado.email)
+                            .filter(Afiliado.identificacion == identificacion_limpia)
+                            .scalar()
+                        )
+                        if correo_afiliado:
+                            emails_and_ids.append((identificacion, correo_afiliado))
+
+        # Crear el contenido del archivo CSV
+        csv_content = "Identificacion,Correo\n"
+        for doc_identification, email in emails_and_ids:
+            csv_content += f"{doc_identification},{email}\n"
+
+        # Crear BytesIO para el archivo CSV
+        csv_output = BytesIO()
+        csv_output.write(csv_content.encode())
+
+        # Crear un archivo ZIP con los archivos renombrados y el archivo CSV
+        zip_output = BytesIO()
+        with zipfile.ZipFile(zip_output, "w") as zf:
+            for nombre, contenido in renamed_files:
+                zf.writestr(nombre, contenido)
+            zf.writestr("emails_and_ids.csv", csv_content)
+
+        # Configurar la respuesta como un archivo ZIP
+        zip_output.seek(0)
+        response = StreamingResponse(zip_output, media_type="application/zip")
+        response.headers[
+            "Content-Disposition"
+        ] = "attachment; filename=archivos_renombrados.zip"
+
+        return response
 
     except Exception as e:
         return {"error": str(e)}
