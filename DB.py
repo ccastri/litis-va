@@ -10,9 +10,9 @@ from sqlalchemy.orm import sessionmaker
 db_name = "cyc"
 db_user = "postgres"
 db_password = "password"
-db_host = (
-    "db"  # Nombre del servicio del contenedor de la base de datos en Docker Compose
-)
+# db_host = (
+#     "db"  # Nombre del servicio del contenedor de la base de datos en Docker Compose
+# )
 db_host = "localhost"
 
 # La URL de conexión ahora apunta al contenedor 'db' en lugar de 'localhost'
