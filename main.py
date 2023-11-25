@@ -103,9 +103,12 @@ create_tables()
 # async def obtener_planilla_afiliado(afiliado_id: int, db: Session = Depends(get_db)):
 #     text = extract_text(".\static\planillas\CAMILO ANDRES CASTRILLON CALDERON.pdf")
 #     print(text)
+
+
 @app.post("/afiliados-zip")
 async def obtener_planilla_afiliado_zip(
-    db: Session = Depends(get_db), uploaded_file: UploadFile = File(...)
+    db: Session = Depends(get_db),
+    uploaded_file: UploadFile = File(...),
 ):
     try:
         zip_file = await uploaded_file.read()
@@ -149,28 +152,50 @@ async def obtener_planilla_afiliado_zip(
                         # Extraer la información del texto de la segunda página
                         info_extraida = extraer_informacion(second_page_text)
 
-                        # Renombrar el archivo según la información extraída
-                        nuevo_nombre = f"{info_extraida['Documento']}_{info_extraida['Nombre del Afiliado']}_{info_extraida['Tipo Planilla']}_{info_extraida['Periodo Cotización']}_{info_extraida['Periodo Servicio']}.pdf"
-
-                        # Agregar el archivo renombrado a la lista
-                        renamed_files.append((nuevo_nombre, pdf_content))
-
                         identificacion = info_extraida["Documento"]
                         # Eliminar "CC " del inicio del número de documento si está presente
                         identificacion_limpia = identificacion.replace("CC ", "")
 
-                        correo_afiliado = (
-                            db.query(Afiliado.email)
+                        afiliado_info = (
+                            db.query(
+                                Afiliado.email,
+                                Afiliado.primer_nombre,
+                                Afiliado.primer_apellido,
+                                Afiliado.numero_celular,
+                            )
                             .filter(Afiliado.identificacion == identificacion_limpia)
-                            .scalar()
+                            .first()
                         )
-                        if correo_afiliado:
-                            emails_and_ids.append((identificacion, correo_afiliado))
 
-        # Crear el contenido del archivo CSV
-        csv_content = "Identificacion,Correo\n"
-        for doc_identification, email in emails_and_ids:
-            csv_content += f"{doc_identification},{email}\n"
+                        if afiliado_info:
+                            (
+                                email,
+                                primer_nombre,
+                                primer_apellido,
+                                numero_celular,
+                            ) = afiliado_info
+                            nuevo_nombre = f"{identificacion_limpia}_{primer_nombre}_{primer_apellido}_{info_extraida['Tipo Planilla']}_{info_extraida['Periodo Cotización']}_{info_extraida['Periodo Servicio']}.pdf"
+                            emails_and_ids.append(
+                                (
+                                    nuevo_nombre,
+                                    email,
+                                    primer_nombre,
+                                    primer_apellido,
+                                    numero_celular,
+                                    pdf_content,
+                                )
+                            )
+
+        csv_content = "Nombre Archivo,Correo,Primer Nombre,Primer Apellido,Telefono\n"
+        for (
+            nuevo_nombre,
+            email,
+            primer_nombre,
+            primer_apellido,
+            numero_celular,
+            _,
+        ) in emails_and_ids:
+            csv_content += f"{nuevo_nombre},{email},{primer_nombre},{primer_apellido},{numero_celular}\n"
 
         # Crear BytesIO para el archivo CSV
         csv_output = BytesIO()
@@ -179,9 +204,16 @@ async def obtener_planilla_afiliado_zip(
         # Crear un archivo ZIP con los archivos renombrados y el archivo CSV
         zip_output = BytesIO()
         with zipfile.ZipFile(zip_output, "w") as zf:
-            for nombre, contenido in renamed_files:
+            for (
+                nombre,
+                email,
+                primer_nombre,
+                primer_apellido,
+                numero_celular,
+                contenido,
+            ) in emails_and_ids:
                 zf.writestr(nombre, contenido)
-            zf.writestr("emails_and_ids.csv", csv_content)
+            zf.writestr("nombres_correos.csv", csv_content)
 
         # Configurar la respuesta como un archivo ZIP
         zip_output.seek(0)
@@ -194,68 +226,6 @@ async def obtener_planilla_afiliado_zip(
 
     except Exception as e:
         return {"error": str(e)}
-
-
-@app.post("/afiliados-pdf")
-async def obtener_planilla_afiliado(uploaded_files: List[UploadFile] = File(...)):
-    try:
-        renamed_files = []
-
-        for uploaded_file in uploaded_files:
-            file_bytes = await uploaded_file.read()
-
-            # Extraer solo la segunda página del archivo PDF
-            second_page_text = extract_text(BytesIO(file_bytes), page_numbers=[1])
-
-            # Patrones de expresiones regulares para la información que deseas extraer
-            patrones = {
-                "Periodo Cotización": r"Periodo Cotización\s*\n+([\w\d]+)",
-                "Periodo Servicio": r"Periodo Servicio\s*\n+([\w\d]+)",
-                "Tipo Planilla": r"Tipo Planilla\s*\n+([\w\d]+)",
-                "Documento": r"Documento\s*\n\n([A-Z0-9 ]+)",
-                "Nombre del Afiliado": r"Nombres y Apellidos\s*\n\n([A-Z ]+)",
-            }
-
-            # Función para extraer la información basada en los patrones definidos
-            def extraer_informacion(texto):
-                info_extraida = {}
-                for nombre, patron in patrones.items():
-                    resultado = re.search(patron, texto)
-                    if resultado:
-                        info_extraida[nombre] = resultado.group(1)
-                    else:
-                        info_extraida[nombre] = None
-                return info_extraida
-
-            # Extraer la información del texto de la segunda página
-            info_extraida = extraer_informacion(second_page_text)
-
-            # Renombrar el archivo según la información extraída
-            nuevo_nombre = f"{info_extraida['Documento']}_{info_extraida['Nombre del Afiliado']}_{info_extraida['Tipo Planilla']}_{info_extraida['Periodo Cotización']}_{info_extraida['Periodo Servicio']}.pdf"
-
-            # Guardar el archivo con el nuevo nombre
-            with open(nuevo_nombre, "wb") as file_object:
-                file_object.write(file_bytes)
-
-            renamed_files.append((nuevo_nombre, file_bytes))
-
-        # Crear un archivo zip con los archivos renombrados
-        zip_file = BytesIO()
-        with zipfile.ZipFile(zip_file, "w") as zf:
-            for nombre, contenido in renamed_files:
-                zf.writestr(nombre, contenido)
-
-        # Configurar la respuesta como un archivo zip
-        zip_file.seek(0)
-        response = StreamingResponse(zip_file, media_type="application/zip")
-        response.headers[
-            "Content-Disposition"
-        ] = "attachment; filename=archivos_renombrados.zip"
-
-        return response
-
-    except Exception as e:
-        return JSONResponse(content={"error": str(e)}, status_code=500)
 
 
 @app.get(
@@ -276,17 +246,6 @@ async def obtener_afiliados(
     return afiliados
 
 
-@app.get("/afiliados/count")
-async def contar_afiliados(db: Session = Depends(get_db)):
-    try:
-        count = db.query(func.count()).select_from(Afiliado).scalar()
-        if count is None:
-            raise HTTPException(status_code=404, detail="No se encontraron afiliados")
-        return {"count": count}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @app.get("/afiliados/documentos/")
 async def obtener_documentos_afiliados(
     selected_ids: Optional[List[int]] = Query(None),
@@ -294,7 +253,9 @@ async def obtener_documentos_afiliados(
     skip: int = 0,
     db: Session = Depends(get_db),
 ):
-    query = db.query(Afiliado.tipo_identificacion, Afiliado.identificacion)
+    query = db.query(
+        Afiliado.tipo_identificacion, Afiliado.identificacion, Afiliado.afp
+    )
 
     # Filtra los afiliados seleccionados si se proporcionan los IDs
     if selected_ids:
@@ -309,6 +270,7 @@ async def obtener_documentos_afiliados(
         DocumentoAfiliado(
             tipo_identificacion=afi[0],
             identificacion=afi[1],
+            afp=afi[2],
         )
         for afi in afiliados
     ]
@@ -430,50 +392,49 @@ async def generar_xls(request: Request):
 
 
 def enviar_pdf(
-    file_path: str,
-    to_address: str,
-    provider: str = "gmail",
+    correo: str,
+    pdf_content: bytes,
+    file_name: str,
+    provider: str,
 ):
     try:
         from_address = (
             "cycaccionlegalsas@gmail.com"  # Cambia esto con tu dirección de correo
         )
         password = "kvbs wfum qrst bvsx"  # Cambia esto con tu contraseña
-        to_address = to_address
 
         # Crear instancia del mensaje
         msg = MIMEMultipart()
         msg["From"] = from_address
-        msg["To"] = to_address
+        msg["To"] = correo
         msg["Subject"] = "Reporte pago de su planilla"
 
         # Configurar el servidor SMTP y envío del correo electrónico según el proveedor
-        if provider.lower() == "gmail":
+        if provider.lower() == "gmail.com":
             smtp_server = "smtp.gmail.com"
             port = 587
-        elif provider.lower() == "hotmail":
+        elif provider.lower() == "hotmail.com":
             smtp_server = "smtp.live.com"  # Puedes usar "smtp.office365.com" si es una cuenta de Office 365
             port = 587
         else:
             raise ValueError("Proveedor de correo no compatible")
+
         # Cuerpo del correo
         body = "Este es el reporte de la planilla"
         msg.attach(MIMEText(body, "plain"))
 
         # Adjuntar el archivo PDF
-        filename = file_path
-        attachment = open(filename, "rb")
         part = MIMEBase("application", "octet-stream")
-        part.set_payload(attachment.read())
+        part.set_payload(pdf_content)
         encoders.encode_base64(part)
         part.add_header(
             "Content-Disposition",
-            f"attachment; filename= {filename}",
+            f"attachment; filename= {file_name}",
         )
         msg.attach(part)
 
         # Configurar el servidor SMTP y enviar el correo electrónico
-        server = smtplib.SMTP("smtp.gmail.com", 587)
+        server = smtplib.SMTP(smtp_server, port)
         server.starttls()
         server.login(from_address, password)
         server.send_message(msg)
@@ -485,23 +446,62 @@ def enviar_pdf(
         print(f"Error: {str(e)}")
 
 
-# def enviar_correo_a_afiliados(
-#     file_link: str,
-#     selected_ids: List[int],
-#     db: Session = Depends(get_db),
-# ):
-#     try:
-#         # Obtener los correos electrónicos
-#         correos_afiliados = obtener_correos_afiliados(db, selected_ids)
+@app.post("/enviar-archivos")
+async def enviar_archivos_a_afiliados(uploaded_file: UploadFile = File(...)):
+    try:
+        # Leer el archivo .zip
+        zip_file = await uploaded_file.read()
 
-#         # Iterar sobre los correos electrónicos y enviar el correo a cada uno
-#         for identificacion, email in correos_afiliados:
-#             enviar_pdf(file_link, email)
+        # Crear un objeto ZipFile
+        with zipfile.ZipFile(BytesIO(zip_file), "r") as zip_ref:
+            # Buscar el archivo .csv dentro del .zip
+            csv_file_name = next(
+                (
+                    file_name
+                    for file_name in zip_ref.namelist()
+                    if file_name.lower().endswith(".csv")
+                ),
+                None,
+            )
 
-#         print("Correos electrónicos enviados a los afiliados.")
+            # Si se encuentra el archivo .csv, procesarlo
+            if csv_file_name:
+                # Leer el contenido del archivo .csv con Pandas
+                with zip_ref.open(csv_file_name) as csv_file:
+                    df = pd.read_csv(csv_file)
 
-#     except Exception as e:
-#         print(f"Error: {str(e)}")
+                    # Iterar sobre cada fila del archivo .csv
+                    for index, row in df.iterrows():
+                        (
+                            nombre_archivo,
+                            correo,
+                            primer_nombre,
+                            primer_apellido,
+                            numero_celular,
+                        ) = row
+
+                        # Extraer el proveedor del correo electrónico
+                        proveedor_correo = correo.split("@")[1]
+
+                        # Buscar y enviar el archivo correspondiente a cada afiliado por correo
+                        for file_name in zip_ref.namelist():
+                            if (
+                                file_name.lower().endswith(".pdf")
+                                and nombre_archivo in file_name
+                            ):
+                                # Leer el contenido del archivo PDF
+                                with zip_ref.open(file_name) as pdf_file:
+                                    pdf_content = pdf_file.read()
+
+                                    # Enviar el archivo PDF por correo al afiliado
+                                    enviar_pdf(
+                                        correo,
+                                        pdf_content,
+                                        file_name,
+                                        provider=proveedor_correo,
+                                    )
+    except Exception as e:
+        return {"error": str(e)}
 
 
 async def main_2():

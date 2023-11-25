@@ -76,3 +76,4 @@ class DocumentoAfiliado(Base):
     id = Column(Integer, primary_key=True)
     tipo_identificacion = Column(String(50))
     identificacion = Column(Integer)
+    afp = Column(String(100))
