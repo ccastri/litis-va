@@ -238,12 +238,10 @@ async def obtener_afiliados(
     afiliados = db.query(Afiliado).offset(skip).limit(limit).all()
     afiliados_length = db.query(Afiliado).count()
     print(afiliados)
+    print(afiliados_length)
 
-    # return {
-    #     "afiliados": afiliados,
-    #     "cantidad": afiliados_length
-    # }
-    return afiliados
+    return {"afiliados": afiliados, "cantidad": afiliados_length}
+    # return afiliados
 
 
 @app.get("/afiliados/documentos/")
@@ -287,39 +285,6 @@ async def obtener_afiliado(afiliado_id: int, db: Session = Depends(get_db)):
     if not afiliado:
         raise HTTPException(status_code=404, detail="Afiliado no encontrado")
     return afiliado
-
-
-# @app.get("/afiliados/")
-# async def obtener_afiliados(
-#     skip: int = 0, limit: int = 10, db: Session = Depends(get_db)
-# ):
-#     # -> List[Afiliado]:
-#     afiliados = db.query(Afiliado).offset(skip).limit(limit).all()
-#     afiliados_length = db.query(Afiliado).count()
-#     return {"afiliados": afiliados, "cantidad": afiliados_length}
-
-# @app.post("/api/generar-csv")
-# async def generar_csv(selected_afiliados: List[Dict[str, str]]):
-#     if not selected_afiliados:
-#         raise HTTPException(status_code=400, detail="No se han proporcionado afiliados seleccionados")
-
-#     # Lógica para buscar instancias coincidentes en la base de datos utilizando selected_afiliados
-
-#     # Ejemplo de datos ficticios para generar un archivo CSV
-#     datos_a_csv = [
-#         {"Tipo de Documento": afiliado["tipo_identificacion"], "Número de Documento": afiliado["identificacion"]}
-#         for afiliado in selected_afiliados
-#     ]
-
-#     # Crear el archivo CSV en memoria
-#     output = io.StringIO()
-#     csv_writer = csv.DictWriter(output, fieldnames=["Tipo de Documento", "Número de Documento"])
-#     csv_writer.writeheader()
-#     csv_writer.writerows(datos_a_csv)
-
-#     # Regresar el archivo CSV como respuesta
-#     output.seek(0)
-#     return StreamingResponse(iter([output.getvalue()]), media_type="text/csv")
 
 
 @app.post("/api/generar-xls")
@@ -366,29 +331,6 @@ async def generar_xls(request: Request):
         media_type="application/vnd.ms-excel",
         headers={"Content-Disposition": "attachment; filename=datos.xls"},
     )
-
-
-# def obtener_correos_afiliados(db: Session, selected_ids: List[int]) -> List[Tuple[str]]:
-#     # Consulta para obtener los correos electrónicos de los afiliados según los IDs proporcionados
-#     correos_afiliados = (
-#         db.query(Afiliado.identificacion, Afiliado.email)
-#         .filter(Afiliado.id.in_(selected_ids))
-#         .all()
-#     )
-
-#     return correos_afiliados
-
-
-# @app.get("/afiliados/enviar-email/")
-# async def obtener_documentos_afiliados(
-#     selected_ids: List[int] = Query(...),
-#     # ... otros parámetros
-#     db: Session = Depends(get_db),
-# ):
-#     # Utiliza la función para obtener los correos electrónicos
-#     correos_afiliados = obtener_correos_afiliados(db, selected_ids)
-
-# Resto del código para devolver documentos_afiliados...
 
 
 def enviar_pdf(
