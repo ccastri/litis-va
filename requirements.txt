@@ -55,4 +55,5 @@ asyncpg
 psycopg2
 aiopg
 xlrd
+xlwt
 pdfminer.six
