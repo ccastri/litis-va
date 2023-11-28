@@ -1,16 +1,21 @@
-# Dockerfile for FastAPI app
+# Build Stage
+FROM python:latest AS builder
 
-# Usa una imagen base con Python
-FROM python:latest
-
-# Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Copia los archivos del proyecto al contenedor
-COPY . .
+COPY ./requirements.txt .
 
-# Instala las dependencias
-RUN pip install -r requirements.txt  # Asegúrate de tener un requirements.txt con las dependencias de FastAPI
+# Install dependencies
+RUN pip install --upgrade pip && pip install --no-cache-dir -r requirements.txt
+
+# Production Stage
+FROM python:latest
+
+WORKDIR /app
+
+# Copy installed dependencies from the builder stage
+COPY --from=builder /usr/local/lib/python3.8/site-packages /usr/local/lib/python3.8/site-packages
+COPY . .
 
 # Expone el puerto 8000
 EXPOSE 8000
