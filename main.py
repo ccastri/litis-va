@@ -62,9 +62,7 @@ import re
 
 from pdfminer.high_level import extract_text
 
-# from sqlalchemy.ext.declarative import declarative_base
-
-# from auth.login import get_login_router
+import urllib.parse
 
 app = FastAPI()
 # Define allowed origins (you should adjust this according to your requirements)
@@ -228,20 +226,63 @@ async def obtener_planilla_afiliado_zip(
         return {"error": str(e)}
 
 
-@app.get(
-    "/afiliados/",
-    #  response_model=Dict[str, any]
-)
+# @app.get(
+#     "/afiliados/",
+#     #  response_model=Dict[str, any]
+# )
+# async def obtener_afiliados(
+#     skip: int = 0, limit: int = 10, db: Session = Depends(get_db)
+# ):
+#     afiliados = db.query(Afiliado).offset(skip).limit(limit).all()
+#     afiliados_length = db.query(Afiliado).count()
+#     print(afiliados)
+#     print(afiliados_length)
+
+#     return {"afiliados": afiliados, "cantidad": afiliados_length}
+
+
+@app.get("/afiliados/")
 async def obtener_afiliados(
-    skip: int = 0, limit: int = 10, db: Session = Depends(get_db)
+    skip: Optional[str] = 0,
+    limit: Optional[str] = 0,
+    orden: Optional[str] = Query(None),
+    eps: Optional[str] = Query(None),
+    afp: Optional[str] = Query(None),
+    identificacion: Optional[str] = Query(None),
+    riesgo: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
 ):
-    afiliados = db.query(Afiliado).offset(skip).limit(limit).all()
-    afiliados_length = db.query(Afiliado).count()
-    print(afiliados)
-    print(afiliados_length)
+    eps_decoded = urllib.parse.unquote_plus(eps) if eps else None
+    query = db.query(Afiliado)
+    # query = db.query(Afiliado).offset(skip).limit(limit).all()
+
+    # Aplicar filtros según los parámetros proporcionados
+    if orden:
+        if orden == "A-Z":
+            query = query.order_by(Afiliado.primer_apellido.asc())
+        elif orden == "Z-A":
+            query = query.order_by(Afiliado.primer_apellido.desc())
+
+    if eps_decoded and eps_decoded != "":
+        query = query.filter(Afiliado.eps == eps_decoded)
+
+    if afp is not None:
+        if afp == "null":
+            query = query.filter(Afiliado.afp.is_(None))
+        elif afp != "":  # Verificar si el valor no es una cadena vacía
+            query = query.filter(Afiliado.afp == afp)
+
+    if identificacion:
+        query = query.filter(Afiliado.identificacion == int(identificacion))
+
+    if riesgo is not None:
+        if riesgo != "":
+            query = query.filter(Afiliado.arl_nivel == int(riesgo))
+
+    afiliados = query.offset(skip).limit(limit).all()
+    afiliados_length = query.count()
 
     return {"afiliados": afiliados, "cantidad": afiliados_length}
-    # return afiliados
 
 
 @app.get("/afiliados/documentos/")
