@@ -44,6 +44,7 @@ db = {
         "full_name": "camilo castrillon",
         "email": "ccastri.dev333@gmail.com",
         "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
+        "role": "ADMIN"
         # "Contraseña2": "Bio2160cc.1607",
     },
     "francisco": {
@@ -51,6 +52,7 @@ db = {
         "full_name": "francisco castrillon",
         "email": "ccastri.dev333@gmail.com",
         "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
+        "role": "VISITOR"
         # "Contraseña2": "Bio2160cc.1607",
     },
     "pilar": {
@@ -58,6 +60,7 @@ db = {
         "full_name": "pilar calderon",
         "email": "ccastri.dev333@gmail.com",
         "hashed_password": "$2b$12$p2oRUh41cik0Wh7PzUFzQOZNw1RNHmPRYH/cKkMRpqaiaKfiGbWGu",
+        "role": "VISITOR"
         # "Contraseña2": "Bio2160cc.1607",
     },
 }
@@ -79,10 +82,12 @@ class User(BaseModel):
     username: str
     full_name: str
     email: str
+    role: str
 
 
 class UserInDB(User):
     hashed_password: str
+    role: str
 
 
 def get_user(db, username: str):
@@ -184,8 +189,15 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         access_token = await create_access_token(
             data={"sub": user.username}, expires_delta=access_token_expires
         )
+        # Enviar el token por headers
+        # Set the token in the headers
 
-        return {"access_token": access_token, "token_type": "bearer"}
+        response_headers = {
+            "Authorization": {access_token},
+            "user role": {user.role},
+            "token_type": "bearer",
+        }
+        return {"access_token": response_headers, "token_type": "bearer"}
 
     except KeyError as e:
         # Log the error and return a suitable response

@@ -58,11 +58,13 @@ from models import Afiliado, DocumentoAfiliado
 from sqlalchemy import func
 import re
 
+
 # import pdfminer.six
 
 from pdfminer.high_level import extract_text
 
 import urllib.parse
+import tempfile
 
 app = FastAPI()
 # Define allowed origins (you should adjust this according to your requirements)
@@ -82,7 +84,7 @@ app.add_middleware(
 app.include_router(auth_router, tags=["auth"])
 # app.include_router(pdf_loader_router, prefix="/kb", tags=["kb"])
 # app.add.middleware(SessionMiddleware, secret_key="The secret key for testing")
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Creamos la sesión de SQLAlchemy
 
@@ -111,49 +113,27 @@ async def obtener_planilla_afiliado_zip(
     try:
         zip_file = await uploaded_file.read()
 
-        renamed_files = []
-        emails_and_ids = []
+        csv_data = []
+        zip_output = BytesIO()
 
-        # Extract and process each PDF file within the ZIP
+        # Directorio temporal para extraer los archivos
+        temp_dir = "temp_directory"
+        os.makedirs(temp_dir, exist_ok=True)
+
         with zipfile.ZipFile(BytesIO(zip_file), "r") as zip_ref:
             for file_name in zip_ref.namelist():
                 if file_name.lower().endswith(".pdf"):
-                    # Read the PDF file from the ZIP
-                    with zip_ref.open(file_name) as pdf_file:
-                        pdf_content = pdf_file.read()
+                    parts = file_name.split("_")
+                    cc_number = None
 
-                        # Extract text from the second page of the PDF using pdfminer
-                        second_page_text = extract_text(
-                            BytesIO(pdf_content), page_numbers=[1]
-                        )
+                    for part in parts:
+                        if part.startswith("CC"):
+                            cc_number_match = re.search(r"\d+", part)
+                            if cc_number_match:
+                                cc_number = cc_number_match.group()
+                            break
 
-                        # Patrones de expresiones regulares para la información que deseas extraer
-                        patrones = {
-                            "Periodo Cotización": r"Periodo Cotización\s*\n+([\w\d]+)",
-                            "Periodo Servicio": r"Periodo Servicio\s*\n+([\w\d]+)",
-                            "Tipo Planilla": r"Tipo Planilla\s*\n+([\w\d]+)",
-                            "Documento": r"Documento\s*\n\n([A-Z0-9 ]+)",
-                            "Nombre del Afiliado": r"Nombres y Apellidos\s*\n\n([A-Z ]+)",
-                        }
-
-                        # Función para extraer la información basada en los patrones definidos
-                        def extraer_informacion(texto):
-                            info_extraida = {}
-                            for nombre, patron in patrones.items():
-                                resultado = re.search(patron, texto)
-                                if resultado:
-                                    info_extraida[nombre] = resultado.group(1)
-                                else:
-                                    info_extraida[nombre] = None
-                            return info_extraida
-
-                        # Extraer la información del texto de la segunda página
-                        info_extraida = extraer_informacion(second_page_text)
-
-                        identificacion = info_extraida["Documento"]
-                        # Eliminar "CC " del inicio del número de documento si está presente
-                        identificacion_limpia = identificacion.replace("CC ", "")
-
+                    if cc_number:
                         afiliado_info = (
                             db.query(
                                 Afiliado.email,
@@ -161,7 +141,7 @@ async def obtener_planilla_afiliado_zip(
                                 Afiliado.primer_apellido,
                                 Afiliado.numero_celular,
                             )
-                            .filter(Afiliado.identificacion == identificacion_limpia)
+                            .filter(Afiliado.identificacion == cc_number)
                             .first()
                         )
 
@@ -172,48 +152,55 @@ async def obtener_planilla_afiliado_zip(
                                 primer_apellido,
                                 numero_celular,
                             ) = afiliado_info
-                            nuevo_nombre = f"{identificacion_limpia}_{primer_nombre}_{primer_apellido}_{info_extraida['Tipo Planilla']}_{info_extraida['Periodo Cotización']}_{info_extraida['Periodo Servicio']}.pdf"
-                            emails_and_ids.append(
-                                (
-                                    nuevo_nombre,
-                                    email,
+
+                            # nuevo_nombre = (
+                            #     f"{cc_number}_{primer_nombre}_{primer_apellido}.pdf"
+                            # )
+
+                            csv_data.append(
+                                [
+                                    file_name,
+                                    email.lower(),
                                     primer_nombre,
                                     primer_apellido,
                                     numero_celular,
-                                    pdf_content,
-                                )
+                                ]
                             )
 
-        csv_content = "Nombre Archivo,Correo,Primer Nombre,Primer Apellido,Telefono\n"
-        for (
-            nuevo_nombre,
-            email,
-            primer_nombre,
-            primer_apellido,
-            numero_celular,
-            _,
-        ) in emails_and_ids:
-            csv_content += f"{nuevo_nombre},{email},{primer_nombre},{primer_apellido},{numero_celular}\n"
+                            # Extraer el archivo al directorio temporal
+                            zip_ref.extract(file_name, temp_dir)
 
-        # Crear BytesIO para el archivo CSV
+        # Convertir los datos a un DataFrame de Pandas
+        df = pd.DataFrame(
+            csv_data,
+            columns=[
+                "Nombre Archivo",
+                "Correo",
+                "Primer Nombre",
+                "Primer Apellido",
+                "Telefono",
+            ],
+        )
+
+        # Escribir el DataFrame a un archivo CSV
         csv_output = BytesIO()
-        csv_output.write(csv_content.encode())
+        df.to_csv(csv_output, index=False)
 
-        # Crear un archivo ZIP con los archivos renombrados y el archivo CSV
-        zip_output = BytesIO()
         with zipfile.ZipFile(zip_output, "w") as zf:
-            for (
-                nombre,
-                email,
-                primer_nombre,
-                primer_apellido,
-                numero_celular,
-                contenido,
-            ) in emails_and_ids:
-                zf.writestr(nombre, contenido)
-            zf.writestr("nombres_correos.csv", csv_content)
+            for file_name in os.listdir(temp_dir):
+                file_path = os.path.join(temp_dir, file_name)
+                if os.path.isfile(file_path):
+                    zf.write(file_path, file_name)  # Agregar archivo al ZIP
 
-        # Configurar la respuesta como un archivo ZIP
+            # Agregar el archivo CSV al ZIP
+            zf.writestr("nombres_correos.csv", csv_output.getvalue())
+
+        # Eliminar el directorio temporal
+        for file in os.listdir(temp_dir):
+            os.remove(os.path.join(temp_dir, file))
+        os.rmdir(temp_dir)
+
+        # Preparar la respuesta como archivo ZIP
         zip_output.seek(0)
         response = StreamingResponse(zip_output, media_type="application/zip")
         response.headers[
@@ -426,7 +413,7 @@ def enviar_pdf(
         print("Correo electrónico enviado con el archivo adjunto.")
 
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error: {str(e)} {correo}")
 
 
 @app.post("/enviar-archivos")
@@ -462,12 +449,13 @@ async def enviar_archivos_a_afiliados(uploaded_file: UploadFile = File(...)):
                             primer_apellido,
                             numero_celular,
                         ) = row
-
+                        print(row)
                         # Extraer el proveedor del correo electrónico
                         proveedor_correo = correo.split("@")[1]
 
                         # Buscar y enviar el archivo correspondiente a cada afiliado por correo
                         for file_name in zip_ref.namelist():
+                            # print(file_name)
                             if (
                                 file_name.lower().endswith(".pdf")
                                 and nombre_archivo in file_name
@@ -475,7 +463,8 @@ async def enviar_archivos_a_afiliados(uploaded_file: UploadFile = File(...)):
                                 # Leer el contenido del archivo PDF
                                 with zip_ref.open(file_name) as pdf_file:
                                     pdf_content = pdf_file.read()
-
+                                    print(pdf_content)
+                                    print(correo)
                                     # Enviar el archivo PDF por correo al afiliado
                                     enviar_pdf(
                                         correo,
@@ -487,10 +476,11 @@ async def enviar_archivos_a_afiliados(uploaded_file: UploadFile = File(...)):
         return {"error": str(e)}
 
 
+@app.get("/")
 async def main_2():
     try:
         print("main")
-        return {"hello": "world"}
+        return {"hello": "worlddddd"}
     except Exception as e:
         return f"error: {e}"
 
@@ -523,4 +513,4 @@ async def main_2():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", reload=True, host="0.0.0.0", port=8000)
+    uvicorn.run("main:app", reload=True, host="127.0.0.1", port=8000)
