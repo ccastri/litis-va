@@ -3,7 +3,8 @@ venv/
 
 # Archivos de desarrollo local
 .env
-
+client_secrets.json
+settings.yaml
 # Archivos y directorios de compilación y caché
 __pycache__/
 *.pyc
