@@ -1,0 +1,18 @@
+# Directorio de entorno virtual (si usas uno)
+venv/
+
+# Archivos de desarrollo local
+.env
+client_secrets.json
+settings.yaml
+# Archivos y directorios de compilación y caché
+__pycache__/
+*.pyc
+*.pyo
+
+# Carpeta de dependencias (puede variar según tu gestor de dependencias)
+.venv/
+env/
+
+# Otros archivos generados durante el desarrollo
+*.log

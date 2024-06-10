@@ -1,0 +1,13 @@
+# Directorio de entorno virtual (si usas uno)
+venv/
+
+# Archivos de desarrollo local
+.env
+
+# Archivos y directorios de compilación y caché
+__pycache__/
+*.pyc
+*.pyo
+
+# Otros archivos generados durante el desarrollo
+*.log
